@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reading Study — Demo</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#172033;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
+main{width:min(760px,100%);background:white;border:1px solid #e3e7ef;border-radius:18px;padding:clamp(22px,5vw,44px);box-shadow:0 12px 40px #17203312}
+h1{font-size:clamp(1.5rem,4vw,2rem);margin:0 0 12px}p{line-height:1.6;color:#465166}
+button,input{font:inherit}button{border:0;border-radius:10px;padding:12px 20px;background:#244a86;color:white;cursor:pointer;font-weight:650}button:disabled{opacity:.4;cursor:not-allowed}
+input{padding:12px;border:1px solid #cbd3e1;border-radius:9px;width:100%;margin:8px 0 20px}
+.muted{font-size:.9rem;color:#69758a}.progress{height:6px;background:#edf0f5;border-radius:8px;margin:20px 0 30px;overflow:hidden}.bar{height:100%;background:#4776bb;width:0}
+.stage{min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.sentence{font-size:clamp(1.5rem,4vw,2.2rem);min-height:3.2em;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.35em;color:#172033}
+.prompt{font-size:1.2rem;max-width:600px;margin:10px auto 24px;color:#172033}
+.controls{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:22px}
+.choice{min-width:110px;background:#eef2f8;color:#1d3558}.hidden{display:none!important}
+</style>
+</head>
+<body><main>
+<section id="welcome">
+<h1>Reading study</h1>
+<p>Thank you for taking part. You will read short sentences one segment at a time. Press the <b>Space</b> key (or click Continue) to reveal the next segment. After each sentence, answer a simple Yes/No question.</p>
+<p>Please read at your normal pace. The study takes approximately 8–12 minutes. You can use a laptop or desktop with a physical keyboard for the most consistent experience.</p>
+<label for="pid"><b>Participant code</b> <span class="muted">(use the code provided by the researcher)</span></label>
+<input id="pid" autocomplete="off" placeholder="e.g. P001">
+<button id="start">Start</button>
+<p class="muted">Demo version: responses are saved in this browser and can be downloaded as a CSV at the end. They are not sent to the researcher automatically.</p>
+</section>
+<section id="task" class="hidden">
+<div class="muted" id="counter"></div><div class="progress"><div class="bar" id="bar"></div></div>
+<div class="stage">
+<div id="reading" class="sentence"></div>
+<div id="question" class="prompt hidden"></div>
+<div id="feedback" class="muted"></div>
+</div>
+<div class="controls" id="controls"><button id="next">Continue</button></div>
+</section>
+<section id="done" class="hidden">
+<h1>Thank you!</h1><p>You have completed the sample study. Please download your response file and send it to the researcher.</p>
+<button id="download">Download CSV</button>
+<p class="muted" id="summary"></p>
+</section>
+</main>
+<script>
+const trials = [
+{type:"gp",s:"While Anna dressed the baby played in the crib.",q:"Did Anna dress the baby?",a:"no"},
+{type:"gp",s:"The horse raced past the barn fell.",q:"Did the horse fall?",a:"yes"},
+{type:"gp",s:"The old man the boats every summer.",q:"Do the old men operate the boats?",a:"yes"},
+{type:"gp",s:"Because the teacher taught the children learned quickly.",q:"Did the teacher teach the children?",a:"no"},
+{type:"gp",s:"The cotton clothing is made of grows in warm climates.",q:"Does cotton grow in warm climates?",a:"yes"},
+{type:"gp",s:"Since the musicians began the audience applauded loudly.",q:"Did the musicians begin to applaud?",a:"no"},
+{type:"gp",s:"The boat floated down the river sank near the bridge.",q:"Did the boat sink?",a:"yes"},
+{type:"gp",s:"After the guests arrived the host served dinner.",q:"Did the host arrive before the guests?",a:"no"},
+{type:"gp",s:"The complex houses married students.",q:"Are the houses complicated?",a:"no"},
+{type:"gp",s:"While the band played the guests danced in the hall.",q:"Did the band dance in the hall?",a:"no"},
+{type:"gp",s:"The prime number few students understand is difficult.",q:"Do few students understand the prime number?",a:"yes"},
+{type:"gp",s:"When the lights changed the drivers stopped their cars.",q:"Did the drivers change the lights?",a:"no"},
+{type:"gp",s:"The old train the station before dawn was delayed.",q:"Was the train delayed?",a:"yes"},
+{type:"gp",s:"Although the doctor warned the patient ignored the advice.",q:"Did the patient warn the doctor?",a:"no"},
+{type:"gp",s:"The florist sent the flowers smiled warmly.",q:"Did the florist smile?",a:"yes"},
+{type:"gp",s:"Before the detective questioned the suspect disappeared.",q:"Did the detective disappear?",a:"no"},
+{type:"gp",s:"The instructions given to the students were confusing.",q:"Were the instructions confusing?",a:"yes"},
+{type:"gp",s:"As the runner approached the finish line collapsed.",q:"Did the runner collapse?",a:"no"},
+{type:"gp",s:"The evidence examined by the lawyer was convincing.",q:"Was the evidence examined by the lawyer?",a:"yes"},
+{type:"gp",s:"While the mother cooked the children watched television.",q:"Did the mother watch television?",a:"no"},
+{type:"filler",s:"The librarian placed the books on the wooden shelf.",q:"Did the librarian place books on a shelf?",a:"yes"},
+{type:"filler",s:"A bright red bicycle stood beside the garden gate.",q:"Was the bicycle blue?",a:"no"},
+{type:"filler",s:"The students discussed the article after class.",q:"Did the students discuss an article?",a:"yes"},
+{type:"filler",s:"Several birds flew across the quiet lake at sunset.",q:"Did the birds swim across the lake?",a:"no"},
+{type:"filler",s:"Maya bought fresh apples at the local market.",q:"Did Maya buy apples?",a:"yes"},
+{type:"filler",s:"The museum closes its doors at six in the evening.",q:"Does the museum close at nine?",a:"no"},
+{type:"filler",s:"A small wooden box contained three old photographs.",q:"Were there three photographs?",a:"yes"},
+{type:"filler",s:"The chef carefully added salt to the soup.",q:"Did the chef add sugar?",a:"no"},
+{type:"filler",s:"Daniel sent his sister a postcard from Italy.",q:"Did Daniel send a postcard?",a:"yes"},
+{type:"filler",s:"Heavy rain delayed the match until the following day.",q:"Did the rain make the match start earlier?",a:"no"}
+];
+let order=[],idx=0,wordIdx=0,segmentStart=0,shown=[],rows=[],participant="";
+const $=id=>document.getElementById(id);
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function begin(){participant=$("pid").value.trim();if(!participant){$("pid").focus();return;}order=shuffle(trials.map((t,i)=>({...t,originalIndex:i+1})));$("welcome").classList.add("hidden");$("task").classList.remove("hidden");showTrial();}
+function showTrial(){const t=order[idx];wordIdx=0;shown=[];$("question").classList.add("hidden");$("feedback").textContent="";$("controls").classList.remove("hidden");$("next").textContent="Continue";$("counter").textContent=`Trial ${idx+1} of ${order.length}`; $("bar").style.width=(idx/order.length*100)+"%";$("reading").textContent="+";segmentStart=performance.now();}
+function advance(){const t=order[idx];if(wordIdx<t.s.split(" ").length){const now=performance.now();if(wordIdx>0){shown[shown.length-1].duration_ms=Math.round(now-segmentStart);}const word=t.s.split(" ")[wordIdx];shown.push({segment_index:wordIdx+1,segment:word,onset_ms:Math.round(now)});$("reading").textContent=shown.map(x=>x.segment).join(" ");wordIdx++;segmentStart=performance.now();$("next").textContent=wordIdx===t.s.split(" ").length?"Show question":"Continue";return;}
+if(!$("question").classList.contains("hidden"))return;
+const now=performance.now();if(shown.length)shown[shown.length-1].duration_ms=Math.round(now-segmentStart);
+$("reading").textContent="";$("question").textContent=t.q;$("question").classList.remove("hidden");$("controls").innerHTML='<button class="choice" data-answer="yes">Yes</button><button class="choice" data-answer="no">No</button>';document.querySelectorAll(".choice").forEach(b=>b.addEventListener("click",()=>answer(b.dataset.answer)));}
+function answer(response){const t=order[idx];rows.push({participant_id:participant,trial_number:idx+1,item_id:t.originalIndex,item_type:t.type,sentence:t.s,question:t.q,correct_answer:t.a,response,accuracy:response===t.a?1:0,segments:shown.map(x=>x.segment).join("|"),segment_times_ms:shown.map(x=>x.duration_ms??"").join("|"),timestamp_utc:new Date().toISOString()});idx++;if(idx===order.length)finish();else{ $("controls").innerHTML='<button id="next">Continue</button>'; $("next").addEventListener("click",advance);showTrial();}}
+function finish(){$("task").classList.add("hidden");$("done").classList.remove("hidden");$("bar").style.width="100%";const acc=rows.reduce((s,r)=>s+r.accuracy,0);$("summary").textContent=`Accuracy: ${acc}/${rows.length}. Please download your CSV now.`;}
+function download(){const cols=["participant_id","trial_number","item_id","item_type","sentence","question","correct_answer","response","accuracy","segments","segment_times_ms","timestamp_utc"];const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';const csv=[cols.join(","),...rows.map(r=>cols.map(c=>esc(r[c])).join(","))].join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download="reading-study-"+participant+".csv";a.click();URL.revokeObjectURL(url);}
+$("start").addEventListener("click",begin);$("next").addEventListener("click",advance);$("download").addEventListener("click",download);
+document.addEventListener("keydown",e=>{if(e.code==="Space"&&!$("task").classList.contains("hidden")&&!$("question").classList.contains("hidden"))return;if(e.code==="Space"&&!$("task").classList.contains("hidden")){e.preventDefault();advance();}});
+</script></body></html>
