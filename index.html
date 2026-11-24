@@ -1,24 +1,36 @@
+
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Reading Study</title>
 <style>
 :root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#172033;background:#f4f6fa}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
 main{width:min(760px,100%);background:white;border:1px solid #e3e7ef;border-radius:18px;padding:clamp(22px,5vw,44px);box-shadow:0 12px 40px #17203312}
-h1{font-size:clamp(1.5rem,4vw,2rem);margin:0 0 12px}p{line-height:1.6;color:#465166}
-button,input{font:inherit}button{border:0;border-radius:10px;padding:12px 20px;background:#244a86;color:white;cursor:pointer;font-weight:650}button:disabled{opacity:.4;cursor:not-allowed}
+h1{font-size:clamp(1.5rem,4vw,2rem);margin:0 0 12px}
+p{line-height:1.6;color:#465166}
+button,input{font:inherit}
+button{border:0;border-radius:10px;padding:12px 20px;background:#244a86;color:white;cursor:pointer;font-weight:650}
+button:disabled{opacity:.4;cursor:not-allowed}
 input{padding:12px;border:1px solid #cbd3e1;border-radius:9px;width:100%;margin:8px 0 20px}
-.muted{font-size:.9rem;color:#69758a}.progress{height:6px;background:#edf0f5;border-radius:8px;margin:20px 0 30px;overflow:hidden}.bar{height:100%;background:#4776bb;width:0}
+.muted{font-size:.9rem;color:#69758a}
+.progress{height:6px;background:#edf0f5;border-radius:8px;margin:20px 0 30px;overflow:hidden}
+.bar{height:100%;background:#4776bb;width:0}
 .stage{min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
 .sentence{font-size:clamp(1.5rem,4vw,2.2rem);min-height:3.2em;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.35em;color:#172033}
 .prompt{font-size:1.2rem;max-width:600px;margin:10px auto 24px;color:#172033}
 .controls{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:22px}
-.choice{min-width:110px;background:#eef2f8;color:#1d3558}.hidden{display:none!important}
+.choice{min-width:110px;background:#eef2f8;color:#1d3558}
+.hidden{display:none!important}
 </style>
 </head>
-<body><main>
+
+<body>
+<main>
+
 <section id="welcome">
 <h1>Reading study</h1>
 <p>Thank you for taking part. You will read short sentences one segment at a time. Press the <b>Space</b> key (or click Continue) to reveal the next segment. After each sentence, answer a simple Yes/No question.</p>
@@ -28,21 +40,29 @@ input{padding:12px;border:1px solid #cbd3e1;border-radius:9px;width:100%;margin:
 <button id="start">Start</button>
 <p class="muted">Your responses are saved automatically and securely as you complete the study.</p>
 </section>
+
 <section id="task" class="hidden">
-<div class="muted" id="counter"></div><div class="progress"><div class="bar" id="bar"></div></div>
+<div class="muted" id="counter"></div>
+<div class="progress"><div class="bar" id="bar"></div></div>
 <div class="stage">
 <div id="reading" class="sentence"></div>
 <div id="question" class="prompt hidden"></div>
 <div id="feedback" class="muted"></div>
 </div>
-<div class="controls" id="controls"><button id="next">Continue</button></div>
+<div class="controls" id="controls">
+<button id="next">Continue</button>
+</div>
 </section>
+
 <section id="done" class="hidden">
-<h1>Thank you!</h1><p id="uploadStatus">Your responses are being saved. Please wait...</p>
+<h1>Thank you!</h1>
+<p id="uploadStatus">Your responses are being saved. Please wait...</p>
 <button id="download" class="hidden">Download backup CSV</button>
 <p class="muted" id="summary"></p>
 </section>
+
 </main>
+
 <script>
 const trials = [
 {type:"gp",s:"While Anna dressed the baby played in the crib.",q:"Did Anna dress the baby?",a:"no"},
@@ -76,50 +96,340 @@ const trials = [
 {type:"filler",s:"Daniel sent his sister a postcard from Italy.",q:"Did Daniel send a postcard?",a:"yes"},
 {type:"filler",s:"Heavy rain delayed the match until the following day.",q:"Did the rain make the match start earlier?",a:"no"}
 ];
-let order=[],idx=0,wordIdx=0,segmentStart=0,shown=[],rows=[],participant="";
+
+// Study state
+let order=[],idx=0,wordIdx=0,segmentStart=0;
+let shown=[],rows=[],participant="";
+
+// Upload configuration
 const API_URL="https://garden-path-api.zrasoleymani.workers.dev/";
-let uploadQueue=Promise.resolve(),uploadFailures=0,uploadedCount=0;
+const BATCH_SIZE=10;
+const MAX_ATTEMPTS=4;
+
+let pendingUploadRows=[];
+let uploadQueue=Promise.resolve();
+let uploadFailures=0;
+let uploadedCount=0;
+
 const $=id=>document.getElementById(id);
+
+function delay(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
+}
+
+// Add a response to the upload queue.
+// Automatically send a batch whenever 10 responses are collected.
 function sendRecord(row){
+  pendingUploadRows.push(row);
+
+  if(pendingUploadRows.length>=BATCH_SIZE){
+    const batch=pendingUploadRows.splice(0,BATCH_SIZE);
+    queueBatch(batch);
+  }
+}
+
+// Add batches to one sequential upload queue.
+function queueBatch(batch){
   uploadQueue=uploadQueue.then(async()=>{
-    const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({records:[row]})});
-    let data={};try{data=await res.json();}catch(e){}
-    if(!res.ok||!data.success)throw new Error(data.error||"Upload failed");
-    uploadedCount+=Number(data.saved||1);
+    await delay(250);
+    await uploadBatchWithRetry(batch);
   }).catch(error=>{
-    uploadFailures++;
-    console.error("Could not save response:",error);
+    uploadFailures+=batch.length;
+    console.error("Batch upload permanently failed:",error);
   });
+
   return uploadQueue;
 }
-function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-function begin(){participant=$("pid").value.trim();if(!participant){$("pid").focus();return;}order=shuffle(trials.map((t,i)=>({...t,originalIndex:i+1})));$("welcome").classList.add("hidden");$("task").classList.remove("hidden");showTrial();}
-function showTrial(){const t=order[idx];wordIdx=0;shown=[];$("question").classList.add("hidden");$("feedback").textContent="";$("controls").classList.remove("hidden");$("next").textContent="Continue";$("counter").textContent=`Trial ${idx+1} of ${order.length}`; $("bar").style.width=(idx/order.length*100)+"%";$("reading").textContent="+";segmentStart=performance.now();}
-function advance(){const t=order[idx];if(wordIdx<t.s.split(" ").length){const now=performance.now();if(wordIdx>0){shown[shown.length-1].duration_ms=Math.round(now-segmentStart);}const word=t.s.split(" ")[wordIdx];shown.push({segment_index:wordIdx+1,segment:word,onset_ms:Math.round(now)});$("reading").textContent=shown.map(x=>x.segment).join(" ");wordIdx++;segmentStart=performance.now();$("next").textContent=wordIdx===t.s.split(" ").length?"Show question":"Continue";return;}
-if(!$("question").classList.contains("hidden"))return;
-const now=performance.now();if(shown.length)shown[shown.length-1].duration_ms=Math.round(now-segmentStart);
-$("reading").textContent="";$("question").textContent=t.q;$("question").classList.remove("hidden");$("controls").innerHTML='<button class="choice" data-answer="yes">Yes</button><button class="choice" data-answer="no">No</button>';document.querySelectorAll(".choice").forEach(b=>b.addEventListener("click",()=>answer(b.dataset.answer)));}
+
+// Send a batch and retry temporary failures.
+async function uploadBatchWithRetry(batch){
+  let lastError=null;
+
+  for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
+    try{
+      const res=await fetch(API_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({records:batch})
+      });
+
+      let data;
+      try{
+        data=await res.json();
+      }catch(e){
+        data={error:"Invalid JSON response from server"};
+      }
+
+      if(!res.ok||data.success!==true){
+        const details=data.details
+          ?JSON.stringify(data.details)
+          :(data.error||"Upload failed");
+
+        const error=new Error(details);
+
+        error.retryable=
+          data.retryable===true||
+          res.status===429||
+          (res.status>=500&&data.retryable!==false);
+
+        error.retryAfterSeconds=Number(data.retryAfterSeconds||0);
+
+        throw error;
+      }
+
+      const saved=Number(data.saved);
+
+      if(!Number.isFinite(saved)||saved!==batch.length){
+        const error=new Error(
+          `Expected ${batch.length} saved records but server confirmed ${data.saved}`
+        );
+        error.retryable=true;
+        throw error;
+      }
+
+      uploadedCount+=saved;
+      console.log(`Saved ${saved} responses successfully.`);
+      return;
+
+    }catch(error){
+      lastError=error;
+
+      // Do not retry permanent errors such as invalid permissions or fields.
+      if(error.retryable===false||attempt===MAX_ATTEMPTS){
+        break;
+      }
+
+      const waitMs=error.retryAfterSeconds>0
+        ?error.retryAfterSeconds*1000
+        :Math.min(1000*Math.pow(2,attempt-1),8000);
+
+      console.warn(
+        `Upload attempt ${attempt} failed. Retrying in ${waitMs/1000} seconds.`,
+        error.message
+      );
+
+      await delay(waitMs);
+    }
+  }
+
+  throw lastError||new Error("Batch upload failed");
+}
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function begin(){
+  participant=$("pid").value.trim();
+
+  if(!participant){
+    $("pid").focus();
+    return;
+  }
+
+  order=shuffle(
+    trials.map((t,i)=>({...t,originalIndex:i+1}))
+  );
+
+  $("welcome").classList.add("hidden");
+  $("task").classList.remove("hidden");
+
+  showTrial();
+}
+
+function showTrial(){
+  const t=order[idx];
+
+  wordIdx=0;
+  shown=[];
+
+  $("question").classList.add("hidden");
+  $("feedback").textContent="";
+  $("controls").classList.remove("hidden");
+  $("next").textContent="Continue";
+  $("counter").textContent=`Trial ${idx+1} of ${order.length}`;
+  $("bar").style.width=(idx/order.length*100)+"%";
+  $("reading").textContent="+";
+
+  segmentStart=performance.now();
+}
+
+function advance(){
+  const t=order[idx];
+
+  if(wordIdx<t.s.split(" ").length){
+    const now=performance.now();
+
+    if(wordIdx>0){
+      shown[shown.length-1].duration_ms=
+        Math.round(now-segmentStart);
+    }
+
+    const word=t.s.split(" ")[wordIdx];
+
+    shown.push({
+      segment_index:wordIdx+1,
+      segment:word,
+      onset_ms:Math.round(now)
+    });
+
+    $("reading").textContent=
+      shown.map(x=>x.segment).join(" ");
+
+    wordIdx++;
+    segmentStart=performance.now();
+
+    $("next").textContent=
+      wordIdx===t.s.split(" ").length
+        ?"Show question"
+        :"Continue";
+
+    return;
+  }
+
+  if(!$("question").classList.contains("hidden"))return;
+
+  const now=performance.now();
+
+  if(shown.length){
+    shown[shown.length-1].duration_ms=
+      Math.round(now-segmentStart);
+  }
+
+  $("reading").textContent="";
+  $("question").textContent=t.q;
+  $("question").classList.remove("hidden");
+
+  $("controls").innerHTML=
+    '<button class="choice" data-answer="yes">Yes</button>'+
+    '<button class="choice" data-answer="no">No</button>';
+
+  document.querySelectorAll(".choice").forEach(b=>{
+    b.addEventListener("click",()=>answer(b.dataset.answer));
+  });
+}
+
 function answer(response){
   const t=order[idx];
-  const row={participant_id:participant,trial_number:idx+1,item_id:t.originalIndex,item_type:t.type,sentence:t.s,question:t.q,correct_answer:t.a,response,accuracy:response===t.a?1:0,segments:shown.map(x=>x.segment).join("|"),segment_times_ms:shown.map(x=>x.duration_ms??"").join("|"),timestamp_utc:new Date().toISOString()};
-  rows.push(row);sendRecord(row);idx++;
-  if(idx===order.length)finish();
-  else{$("controls").innerHTML='<button id="next">Continue</button>';$("next").addEventListener("click",advance);showTrial();}
+
+  const row={
+    participant_id:participant,
+    trial_number:idx+1,
+    item_id:t.originalIndex,
+    item_type:t.type,
+    sentence:t.s,
+    question:t.q,
+    correct_answer:t.a,
+    response,
+    accuracy:response===t.a?1:0,
+    segments:shown.map(x=>x.segment).join("|"),
+    segment_times_ms:shown.map(x=>x.duration_ms??"").join("|"),
+    timestamp_utc:new Date().toISOString()
+  };
+
+  rows.push(row);
+  sendRecord(row);
+
+  idx++;
+
+  if(idx===order.length){
+    finish();
+  }else{
+    $("controls").innerHTML=
+      '<button id="next">Continue</button>';
+
+    $("next").addEventListener("click",advance);
+    showTrial();
+  }
 }
+
 async function finish(){
-  $("task").classList.add("hidden");$("done").classList.remove("hidden");$("bar").style.width="100%";
-  $("uploadStatus").textContent="Saving your responses securely. Please keep this page open...";
+  $("task").classList.add("hidden");
+  $("done").classList.remove("hidden");
+  $("bar").style.width="100%";
+
+  $("uploadStatus").textContent=
+    "Saving your responses securely. Please keep this page open...";
+
+  // Send the final partial batch, if any.
+  if(pendingUploadRows.length>0){
+    const finalBatch=pendingUploadRows.splice(0,BATCH_SIZE);
+    queueBatch(finalBatch);
+  }
+
+  // Wait until all queued batches have finished.
   await uploadQueue;
+
   const acc=rows.reduce((s,r)=>s+r.accuracy,0);
   $("summary").textContent=`Accuracy: ${acc}/${rows.length}.`;
+
   if(uploadFailures===0&&uploadedCount===rows.length){
-    $("uploadStatus").textContent="All your responses have been saved successfully. Thank you!";
+    $("uploadStatus").textContent=
+      "All your responses have been saved successfully. Thank you!";
   }else{
-    $("uploadStatus").textContent=`We could not confirm that all responses were saved (${uploadedCount} of ${rows.length}). Please download the backup file and contact the researcher.`;
+    $("uploadStatus").textContent=
+      `We could not confirm that all responses were saved (${uploadedCount} of ${rows.length}). Please download the backup file and contact the researcher.`;
+
     $("download").classList.remove("hidden");
   }
 }
-function download(){const cols=["participant_id","trial_number","item_id","item_type","sentence","question","correct_answer","response","accuracy","segments","segment_times_ms","timestamp_utc"];const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';const csv=[cols.join(","),...rows.map(r=>cols.map(c=>esc(r[c])).join(","))].join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download="reading-study-"+participant+".csv";a.click();URL.revokeObjectURL(url);}
-$("start").addEventListener("click",begin);$("next").addEventListener("click",advance);$("download").addEventListener("click",download);
-document.addEventListener("keydown",e=>{if(e.code==="Space"&&!$("task").classList.contains("hidden")&&!$("question").classList.contains("hidden"))return;if(e.code==="Space"&&!$("task").classList.contains("hidden")){e.preventDefault();advance();}});
-</script></body></html>
+
+function download(){
+  const cols=[
+    "participant_id",
+    "trial_number",
+    "item_id",
+    "item_type",
+    "sentence",
+    "question",
+    "correct_answer",
+    "response",
+    "accuracy",
+    "segments",
+    "segment_times_ms",
+    "timestamp_utc"
+  ];
+
+  const esc=v=>
+    '"'+String(v??"").replace(/"/g,'""')+'"';
+
+  const csv=[
+    cols.join(","),
+    ...rows.map(r=>cols.map(c=>esc(r[c])).join(","))
+  ].join("\n");
+
+  const url=URL.createObjectURL(
+    new Blob([csv],{type:"text/csv;charset=utf-8"})
+  );
+
+  const a=document.createElement("a");
+  a.href=url;
+  a.download="reading-study-"+participant+".csv";
+  a.click();
+
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+$("start").addEventListener("click",begin);
+$("next").addEventListener("click",advance);
+$("download").addEventListener("click",download);
+
+document.addEventListener("keydown",e=>{
+  if(e.code==="Space"&&
+     !$("task").classList.contains("hidden")&&
+     !$("question").classList.contains("hidden")){
+    return;
+  }
+
+  if(e.code==="Space"&&!$("task").classList.contains("hidden")){
+    e.preventDefault();
+    advance();
+  }
+});
+</script>
+</body>
+</html>
